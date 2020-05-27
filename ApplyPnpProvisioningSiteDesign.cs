@@ -46,8 +46,6 @@ namespace PnpProvisioningSiteDesign
                     ctx.Load(web, w => w.Title);
                     ctx.ExecuteQueryRetry();
 
-                    
-
                     var rootSiteUrl = ConfigurationManager.AppSettings["RootSiteUrl"];
 
                     log.Info($"Successfully connected to site: {web.Title}");
@@ -64,30 +62,7 @@ namespace PnpProvisioningSiteDesign
                     var getHomeClientPage = template.ClientSidePages.Find(i => i.Title == "Home");
                     if (getHomeClientPage != null)
                     {
-                        if (!string.IsNullOrWhiteSpace(siteInformation.ProposalDeadLineDate))
-                        {
-                            var proposalDate = Convert.ToDateTime(siteInformation.ProposalDeadLineDate);
-                            siteInformation.ProposalDeadLineDate = string.Format("{0} of {1}, {2} {3}", proposalDate.Day.Ordinal(), proposalDate.ToString("MMMM"), proposalDate.ToString("yyyy"), proposalDate.ToString("hh:mm tt"));
-                        }
-
-                        var allSectionControls = getHomeClientPage.Sections?[0].Controls;
-
-                        allSectionControls?[0].ControlProperties.Remove("Text");
-                        allSectionControls?[0].ControlProperties.Add("Text", "<h4>Proposal Description -</h4><h4><span><span><span>" + siteInformation.Description + "</span></span></span></h4>");
-
-                        allSectionControls?[1].ControlProperties.Remove("Text");
-                        allSectionControls?[1].ControlProperties.Add("Text", "<h4>Proposal deadline -&nbsp; " + siteInformation.ProposalDeadLineDate + "&nbsp;</h4>");
-
-                        if (!string.IsNullOrWhiteSpace(siteInformation.ProposalManager))
-                        {
-                            var managercoll = siteInformation.ProposalManager.Split(';');
-                            var allPeoplesControls = getHomeClientPage.Sections?[2].Controls;
-
-                            var jsondata = allPeoplesControls?[0].JsonControlData?.
-                                Replace("jmerrell@umwelt.com.au", managercoll[1]).
-                                Replace("John Merrell", managercoll[0]);
-                            allPeoplesControls[0].JsonControlData = jsondata;
-                        }
+                        UpdateControlsDataDynamic(siteInformation, getHomeClientPage);
                     }
 
                     log.Info($"Successfully found template with ID '{template.Id}'");
@@ -124,12 +99,78 @@ namespace PnpProvisioningSiteDesign
             }
         }
 
-        public static void UpdateListTitle(ClientContext ctx,Web web, string listTitle)
+        public static void UpdateControlsDataDynamic(SiteInformation siteInformation, ClientSidePage getHomeClientPage)
         {
-            List odocumentList = web.Lists.GetByTitle("Documents");
-            odocumentList.Title = listTitle;
-            odocumentList.Update();
-            ctx.ExecuteQuery();
+            string proposalDateTime = string.Empty;
+            string proposalStartDate = string.Empty;
+            if (!string.IsNullOrWhiteSpace(siteInformation.ProposalDeadLineDate))
+            {
+                var proposalDate = Convert.ToDateTime(siteInformation.ProposalDeadLineDate);
+                proposalDateTime = string.Format("{0} of {1}, {2} {3}", proposalDate.Day.Ordinal(), proposalDate.ToString("MMMM"), proposalDate.ToString("yyyy"), proposalDate.ToString("hh:mm tt"));
+            }
+            if (!string.IsNullOrWhiteSpace(siteInformation.ProposalStartDate))
+            {
+                var proposalDate = Convert.ToDateTime(siteInformation.ProposalStartDate);
+                proposalStartDate = string.Format("{0} of {1}, {2} {3}", proposalDate.Day.Ordinal(), proposalDate.ToString("MMMM"), proposalDate.ToString("yyyy"), proposalDate.ToString("hh:mm tt"));
+            }
+
+            siteInformation.ProposalStartDate = proposalStartDate;
+            siteInformation.ProposalDeadLineDate = proposalDateTime;
+
+            var allSectionControls = getHomeClientPage.Sections?[0].Controls;
+
+            allSectionControls?[0].ControlProperties.Remove("Text");
+            allSectionControls?[0].ControlProperties.Add("Text", "<h4>Proposal Description -</h4><h4><span><span><span>" + siteInformation.Description + "</span></span></span></h4>");
+
+            allSectionControls?[1].ControlProperties.Remove("Text");
+            allSectionControls?[1].ControlProperties.Add("Text", "<h4>Proposal startdate -&nbsp; " + siteInformation.ProposalStartDate + "&nbsp;</h4>" +
+                "                                        <br/> <h4>Proposal deadline -&nbsp; " + siteInformation.ProposalDeadLineDate + "&nbsp;</h4>");
+
+            var proposalmanagercontrol = getHomeClientPage.Sections?[2].Controls?[1];
+            if (proposalmanagercontrol != null)
+            {
+                string managerEmailId = "";
+                string managerDisplayName = "";
+                if (!string.IsNullOrWhiteSpace(siteInformation.ProposalManager))
+                {
+                    var managercoll = siteInformation.ProposalManager.Split(';');
+                    managerEmailId = managercoll[1];
+                    managerDisplayName = managercoll[0];
+                }
+                var jsondata = proposalmanagercontrol.JsonControlData?.
+                                    Replace("kdavies@umwelt.com.au", managerEmailId).
+                                    Replace("kirsty davies", managerDisplayName);
+                proposalmanagercontrol.JsonControlData = jsondata;
+            }
+
+            var proposaldirectorcontrol = getHomeClientPage.Sections?[2].Controls?[0];
+            if (proposaldirectorcontrol != null)
+            {
+                string directorEmailId = "";
+                string directorDisplayName = "";
+                if (!string.IsNullOrWhiteSpace(siteInformation.ProposalDirector))
+                {
+                    var proposalcoll = siteInformation.ProposalDirector.Split(';');
+                    directorEmailId = proposalcoll[1];
+                    directorDisplayName = proposalcoll[0];
+                }
+                var jsondata = proposaldirectorcontrol.JsonControlData?.
+                                    Replace("jmerrell@umwelt.com.au", directorEmailId).
+                                    Replace("John Merrell", directorDisplayName);
+                proposaldirectorcontrol.JsonControlData = jsondata;
+            }
+        }
+
+        public static void UpdateListTitle(ClientContext ctx, Web web, string listTitle)
+        {
+            try
+            {
+                List odocumentList = web.Lists.GetByTitle("Documents");
+                odocumentList.Title = listTitle;
+                odocumentList.Update();
+                ctx.ExecuteQuery();
+            }
+            catch (Exception ex) { }
         }
 
         public static string Ordinal(this int number)

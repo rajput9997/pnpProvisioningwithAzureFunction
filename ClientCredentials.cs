@@ -10,8 +10,9 @@
     {
         public string SiteUrl { get; set; }
         public string Description { get; set; }
+        public string ProposalStartDate { get; set; }
         public string ProposalDeadLineDate { get; set; }
         public string ProposalManager { get; set; }
-    
+        public string ProposalDirector { get; set; }
     }
 }
