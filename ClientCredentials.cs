@@ -14,5 +14,8 @@
         public string ProposalDeadLineDate { get; set; }
         public string ProposalManager { get; set; }
         public string ProposalDirector { get; set; }
+        public bool IsTopNavigation { get; set; }
+        public string ProjectLocationName { get; set; }
+        public string ProjectLocationAddress { get; set; }
     }
 }

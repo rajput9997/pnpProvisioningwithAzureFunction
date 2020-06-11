@@ -4,6 +4,7 @@ using System.IO;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Host;
 using Microsoft.SharePoint.Client;
+using Newtonsoft.Json;
 using OfficeDevPnP.Core;
 using OfficeDevPnP.Core.Framework.Provisioning.Connectors;
 using OfficeDevPnP.Core.Framework.Provisioning.Model;
@@ -46,8 +47,9 @@ namespace PnpProvisioningSiteDesign
                     ctx.Load(web, w => w.Title);
                     ctx.ExecuteQueryRetry();
 
+                    // string groupID = GetSiteGroupID(ctx);
+                    // UpdateSubscriptionItemProperties(credentials, siteInformation, web.Title ,log);
                     var rootSiteUrl = ConfigurationManager.AppSettings["RootSiteUrl"];
-
                     log.Info($"Successfully connected to site: {web.Title}");
 
                     string currentDirectory = functionContext.FunctionDirectory;
@@ -81,13 +83,16 @@ namespace PnpProvisioningSiteDesign
 
                     web.ApplyProvisioningTemplate(template, ptai);
 
-                    // Add top navigation bar.
-                    web.AddNavigationNode("SharePoint Main Menu", new Uri(rootSiteUrl + "/SitePages/Home.aspx"), "", OfficeDevPnP.Core.Enums.NavigationType.TopNavigationBar);
-                    web.AddNavigationNode("Document Centre", new Uri(rootSiteUrl + "/Document%20Centre/SitePages/Home.aspx"), "", OfficeDevPnP.Core.Enums.NavigationType.TopNavigationBar);
-                    web.AddNavigationNode("Project Centre", new Uri(rootSiteUrl + "/Project%20Centre/SitePages/Home.aspx"), "", OfficeDevPnP.Core.Enums.NavigationType.TopNavigationBar);
-                    web.AddNavigationNode("WHS Centre", new Uri(rootSiteUrl + "/WHS%20Centre/"), "", OfficeDevPnP.Core.Enums.NavigationType.TopNavigationBar);
-                    web.AddNavigationNode("Training Centre", new Uri(rootSiteUrl + "/Training%20Centre"), "", OfficeDevPnP.Core.Enums.NavigationType.TopNavigationBar);
-                    web.AddNavigationNode("Proposal Hub", new Uri(rootSiteUrl + "/Proposal%20Hub"), "", OfficeDevPnP.Core.Enums.NavigationType.TopNavigationBar);
+                    if (siteInformation.IsTopNavigation)
+                    {
+                        // Add top navigation bar.
+                        web.AddNavigationNode("SharePoint Main Menu", new Uri(rootSiteUrl + "/SitePages/Home.aspx"), "", OfficeDevPnP.Core.Enums.NavigationType.TopNavigationBar);
+                        web.AddNavigationNode("Document Centre", new Uri(rootSiteUrl + "/Document%20Centre/SitePages/Home.aspx"), "", OfficeDevPnP.Core.Enums.NavigationType.TopNavigationBar);
+                        web.AddNavigationNode("Project Centre", new Uri(rootSiteUrl + "/Project%20Centre/SitePages/Home.aspx"), "", OfficeDevPnP.Core.Enums.NavigationType.TopNavigationBar);
+                        web.AddNavigationNode("WHS Centre", new Uri(rootSiteUrl + "/WHS%20Centre/"), "", OfficeDevPnP.Core.Enums.NavigationType.TopNavigationBar);
+                        web.AddNavigationNode("Training Centre", new Uri(rootSiteUrl + "/Training%20Centre"), "", OfficeDevPnP.Core.Enums.NavigationType.TopNavigationBar);
+                        web.AddNavigationNode("Proposal Hub", new Uri(rootSiteUrl + "/Proposal%20Hub"), "", OfficeDevPnP.Core.Enums.NavigationType.TopNavigationBar);
+                    }
 
                     UpdateListTitle(ctx, web, "01. Project Management");
                 }
@@ -159,6 +164,72 @@ namespace PnpProvisioningSiteDesign
                                     Replace("John Merrell", directorDisplayName);
                 proposaldirectorcontrol.JsonControlData = jsondata;
             }
+
+            var projectLocationControl = getHomeClientPage.Sections?[2].Controls?[2];
+            if(projectLocationControl != null && !string.IsNullOrWhiteSpace(siteInformation.ProjectLocationName))
+            {
+                string jsondata = projectLocationControl.JsonControlData?.
+                                    Replace("\"title\":\"\"", "\"title\": \"" + siteInformation.ProjectLocationName + "\"").
+                                    Replace("\"defaultTitle\":\"\"", "\"defaultTitle\": \""+ siteInformation.ProjectLocationName +"\"").
+                                    Replace("\"defaultAddress\":\"\"", "\"defaultAddress\": \"" + siteInformation.ProjectLocationAddress + "\"").
+                                    Replace("\"address\":\"\"", "\"address\": \"" + siteInformation.ProjectLocationAddress + "\"");
+                projectLocationControl.JsonControlData = jsondata;
+            }
+        }
+
+        private static string GetSiteGroupID(ClientContext ctx)
+        {
+            try
+            {
+                var spSite = ctx.Site;
+                ctx.Load(spSite, s => s.GroupId);
+                ctx.ExecuteQuery();
+
+                if (spSite.GroupId == new Guid())
+                    return null;
+                else
+                    return spSite.GroupId.ToString();
+            }
+            catch(Exception ex) { return string.Empty; }
+        }
+
+        public static void UpdateSubscriptionItemProperties(ClientCredentials credentials, SiteInformation siteInformation, string webTitle, TraceWriter log)
+        {
+            try
+            {
+                var listTitle = ConfigurationManager.AppSettings["ProjectListTitle"];
+                var projectSiteUrl = ConfigurationManager.AppSettings["ProjectSiteUrl"];
+                using (var ctxProjectSite = new AuthenticationManager().GetAppOnlyAuthenticatedContext(projectSiteUrl, credentials.ClientID, credentials.ClientSecret))
+                {
+                    Web projectWeb = ctxProjectSite.Web;
+                    ctxProjectSite.Load(projectWeb, w => w.Title);
+                    ctxProjectSite.ExecuteQueryRetry();
+
+                    List oList = projectWeb.Lists.GetByTitle(listTitle);
+                    CamlQuery camlQuery = new CamlQuery();
+                    camlQuery.ViewXml = "<View><Query><Where><Eq><FieldRef Name='Title'/>" +
+                        "<Value Type='Text'>" + webTitle + "</Value></Eq></Where></Query><RowLimit>1</RowLimit></View>";
+                    ListItemCollection collListItem = oList.GetItems(camlQuery);
+
+                    ctxProjectSite.Load(collListItem);
+                    ctxProjectSite.ExecuteQueryRetry();
+
+                    foreach (ListItem oListItem in collListItem)
+                    {
+                        siteInformation.Description = oListItem["Description"]?.ToString();
+                        siteInformation.ProposalDirector = oListItem["PD_x002f_PM"]?.ToString();
+                        siteInformation.ProposalDeadLineDate = oListItem["ProposalDeadline"]?.ToString();
+                        siteInformation.ProposalStartDate = oListItem["ProjectStartDate"]?.ToString();
+                        siteInformation.ProposalManager = oListItem["ProposalManager"]?.ToString();
+                        siteInformation.ProjectLocationName = oListItem["ProjectLocationName"]?.ToString();
+                        siteInformation.ProjectLocationAddress = oListItem["ProjectLocationAddress"]?.ToString();
+                    }
+                }
+            }
+            catch(Exception ex)
+            {
+                log.Error("Error when UpdateSubscriptionItemProperties", ex);
+            }
         }
 
         public static void UpdateListTitle(ClientContext ctx, Web web, string listTitle)
@@ -187,5 +258,33 @@ namespace PnpProvisioningSiteDesign
             }
             return work;
         }
+        /* public static async Task GetOffice365Group(Web web, Stream stream)
+         {
+             try
+             {
+                 string clientId = "b7ec8c67-495f-4b8c-8c91-442147c480af";
+                 string clientSecret = "45-A~v-U_-zFi5LJ.I.O91__em0-IrFAgb"; //ConfigurationManager.AppSettings["ClientSecret"];
+                 string authority = "https://login.microsoftonline.com/927c0756-779d-44e0-baa5-8f0ea58bd36e/oauth2/v2.0/authorize"; //ConfigurationManager.AppSettings["AuthorityUrl"];
+
+                 AuthenticationContext authContext = new AuthenticationContext(authority);
+                 ClientCredential creds = new ClientCredential(clientId, clientSecret);
+                 AuthenticationResult authResult = await authContext.AcquireTokenAsync("https://graph.microsoft.com/", creds);
+                 string token = authResult.AccessToken;
+
+                 Stream groupLogoStream = new FileStream("C:\\Jignesh\\Umwelt_ProjectSite_Logo.png",
+                                            FileMode.Open, FileAccess.Read);
+                 var groupColl = UnifiedGroupsUtility.ListUnifiedGroups(token, web.Title);
+                 if (groupColl.Count > 0)
+                 {
+                     var ocurrentGroup = groupColl[0];
+                     UnifiedGroupsUtility.UpdateUnifiedGroup(ocurrentGroup.GroupId, token, description: "my test",
+                                           groupLogo: groupLogoStream );
+                 }
+             }
+             catch (Exception ex)
+             {
+                 string b = ex.Message;
+             }
+         } */
     }
 }
