@@ -125,11 +125,11 @@ namespace PnpProvisioningSiteDesign
             var allSectionControls = getHomeClientPage.Sections?[0].Controls;
 
             allSectionControls?[0].ControlProperties.Remove("Text");
-            allSectionControls?[0].ControlProperties.Add("Text", "<h4>Proposal Description -</h4><h4><span><span><span>" + siteInformation.Description + "</span></span></span></h4>");
+            allSectionControls?[0].ControlProperties.Add("Text", "<h4>Project Description -</h4><h4><span><span><span>" + siteInformation.Description + "</span></span></span></h4>");
 
             allSectionControls?[1].ControlProperties.Remove("Text");
-            allSectionControls?[1].ControlProperties.Add("Text", "<h4>Proposal startdate -&nbsp; " + siteInformation.ProposalStartDate + "&nbsp;</h4>" +
-                "                                        <br/> <h4>Proposal deadline -&nbsp; " + siteInformation.ProposalDeadLineDate + "&nbsp;</h4>");
+            allSectionControls?[1].ControlProperties.Add("Text", "<h4>Project Start Date -&nbsp; " + siteInformation.ProposalStartDate + "&nbsp;</h4>" +
+                "                                        <br/> <h4>Delivery Date -&nbsp; " + siteInformation.ProposalDeadLineDate + "&nbsp;</h4>");
 
             var proposalmanagercontrol = getHomeClientPage.Sections?[2].Controls?[1];
             if (proposalmanagercontrol != null)
