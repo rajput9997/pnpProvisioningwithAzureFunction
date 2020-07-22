@@ -17,5 +17,6 @@
         public bool IsTopNavigation { get; set; }
         public string ProjectLocationName { get; set; }
         public string ProjectLocationAddress { get; set; }
+        public string PlanId { get; set; }
     }
 }

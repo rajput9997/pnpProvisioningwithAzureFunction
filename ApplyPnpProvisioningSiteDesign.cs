@@ -1,10 +1,10 @@
 using System;
 using System.Configuration;
 using System.IO;
+using BingMapsRESTToolkit;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Host;
 using Microsoft.SharePoint.Client;
-using Newtonsoft.Json;
 using OfficeDevPnP.Core;
 using OfficeDevPnP.Core.Framework.Provisioning.Connectors;
 using OfficeDevPnP.Core.Framework.Provisioning.Model;
@@ -44,13 +44,25 @@ namespace PnpProvisioningSiteDesign
                 using (var ctx = new AuthenticationManager().GetAppOnlyAuthenticatedContext(siteInformation.SiteUrl, credentials.ClientID, credentials.ClientSecret))
                 {
                     Web web = ctx.Web;
-                    ctx.Load(web, w => w.Title);
+                    ctx.Load(web, w => w.Title, w => w.Navigation.QuickLaunch);
                     ctx.ExecuteQueryRetry();
 
-                    // string groupID = GetSiteGroupID(ctx);
+                    string groupID = GetSiteGroupID(ctx);
                     // UpdateSubscriptionItemProperties(credentials, siteInformation, web.Title ,log);
                     var rootSiteUrl = ConfigurationManager.AppSettings["RootSiteUrl"];
                     log.Info($"Successfully connected to site: {web.Title}");
+
+                    var navigationcolls = web.Navigation.QuickLaunch;
+                    foreach (var nav in navigationcolls)
+                    {
+                        if (nav.Title == "Key Dates & Deliverables")
+                        {
+                            string url = nav.Url.Split('?')[0] + "?groupId=" + groupID + "&planId=" + siteInformation.PlanId;
+                            nav.Url = url;
+                            nav.Update();
+                            ctx.ExecuteQueryRetry();
+                        }
+                    }
 
                     string currentDirectory = functionContext.FunctionDirectory;
                     DirectoryInfo dInfo = new DirectoryInfo(currentDirectory);
@@ -166,13 +178,21 @@ namespace PnpProvisioningSiteDesign
             }
 
             var projectLocationControl = getHomeClientPage.Sections?[2].Controls?[2];
-            if(projectLocationControl != null && !string.IsNullOrWhiteSpace(siteInformation.ProjectLocationName))
+            if (projectLocationControl != null && !string.IsNullOrWhiteSpace(siteInformation.ProjectLocationName))
             {
                 string jsondata = projectLocationControl.JsonControlData?.
                                     Replace("\"title\":\"\"", "\"title\": \"" + siteInformation.ProjectLocationName + "\"").
-                                    Replace("\"defaultTitle\":\"\"", "\"defaultTitle\": \""+ siteInformation.ProjectLocationName +"\"").
+                                    Replace("\"defaultTitle\":\"\"", "\"defaultTitle\": \"" + siteInformation.ProjectLocationName + "\"").
                                     Replace("\"defaultAddress\":\"\"", "\"defaultAddress\": \"" + siteInformation.ProjectLocationAddress + "\"").
                                     Replace("\"address\":\"\"", "\"address\": \"" + siteInformation.ProjectLocationAddress + "\"");
+
+                Point mapPoint = GetLocationGoogleAPI(!string.IsNullOrWhiteSpace(siteInformation.ProjectLocationAddress) ? siteInformation.ProjectLocationAddress : siteInformation.ProjectLocationName);
+                if (mapPoint != null)
+                {
+                    jsondata = jsondata.Replace("\"latitude\":-32.54438", "\"latitude\":"+ mapPoint.Coordinates[0] + "")
+                                       .Replace("\"longitude\":150.99636", "\"longitude\":" + mapPoint.Coordinates[1] + "");
+
+                }
                 projectLocationControl.JsonControlData = jsondata;
             }
         }
@@ -190,7 +210,7 @@ namespace PnpProvisioningSiteDesign
                 else
                     return spSite.GroupId.ToString();
             }
-            catch(Exception ex) { return string.Empty; }
+            catch (Exception ex) { return string.Empty; }
         }
 
         public static void UpdateSubscriptionItemProperties(ClientCredentials credentials, SiteInformation siteInformation, string webTitle, TraceWriter log)
@@ -226,7 +246,7 @@ namespace PnpProvisioningSiteDesign
                     }
                 }
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 log.Error("Error when UpdateSubscriptionItemProperties", ex);
             }
@@ -257,6 +277,45 @@ namespace PnpProvisioningSiteDesign
                 default: work += "th"; break;
             }
             return work;
+        }
+
+        private static Resource[] GetResourcesFromRequest(BaseRestRequest rest_request)
+        {
+            var r = ServiceManager.GetResponseAsync(rest_request).GetAwaiter().GetResult();
+
+            if (!(r != null && r.ResourceSets != null &&
+                r.ResourceSets.Length > 0 &&
+                r.ResourceSets[0].Resources != null &&
+                r.ResourceSets[0].Resources.Length > 0))
+
+                throw new Exception("No results found.");
+
+            return r.ResourceSets[0].Resources;
+        }
+
+        private static Point GetLocationGoogleAPI(string projectLocationAddress)
+        {
+            try
+            {
+                Point mapPoint = null;
+                var request = new GeocodeRequest()
+                {
+                    BingMapsKey = ConfigurationManager.AppSettings["BingMapKey"],
+                    Query = projectLocationAddress
+                };
+
+                var resources = GetResourcesFromRequest(request);
+                foreach (var resource in resources)
+                {
+                    mapPoint = (resource as Location).Point;
+                    break;
+                }
+                return mapPoint;
+            }
+            catch (Exception ex)
+            {
+                return null;
+            }
         }
         /* public static async Task GetOffice365Group(Web web, Stream stream)
          {
