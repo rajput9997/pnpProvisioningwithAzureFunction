@@ -7,7 +7,7 @@
   <ItemGroup>
     <PackageReference Include="BingMapsRESTToolkit" Version="1.1.4" />
     <PackageReference Include="Microsoft.NET.Sdk.Functions" Version="1.0.0" />
-    <PackageReference Include="Newtonsoft.Json" Version="11.0.1" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
     <PackageReference Include="SharePointPnPCoreOnline" Version="3.21.2005" />
   </ItemGroup>
   <ItemGroup>
